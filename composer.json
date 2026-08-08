@@ -24,7 +24,10 @@
         }
     },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
     },
     "minimum-stability": "stable",
     "extra": {
@@ -33,5 +36,9 @@
                 "Componenta\\CQRS\\Retry\\ConfigProvider"
             ]
         }
+    },
+    "prefer-stable": true,
+    "scripts": {
+        "test": "@php vendor/bin/pest"
     }
 }
