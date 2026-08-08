@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Componenta\CQRS\Command\Middleware;
 
-use Componenta\CQRS\Command\Attribute\Retry;
 use Componenta\CQRS\Command\Exception\RetryableExceptionInterface;
-use Componenta\CQRS\Command\Metadata\CommandAttributeProviderInterface;
-use Componenta\CQRS\Command\Metadata\ReflectionCommandAttributeProvider;
+use Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface;
+use Componenta\CQRS\Command\Metadata\ReflectionCommandMetadataProvider;
 use Componenta\CQRS\Command\OperationInterface;
+use Componenta\CQRS\Retry\Attribute\Retry;
 use Throwable;
 
 /**
@@ -31,7 +31,7 @@ use Throwable;
  */
 final readonly class RetryMiddleware implements MiddlewareInterface
 {
-    private CommandAttributeProviderInterface $attributes;
+    private CommandMetadataProviderInterface $metadata;
 
     /**
      * @param list<class-string<Throwable>> $retryableExceptions
@@ -41,14 +41,14 @@ final readonly class RetryMiddleware implements MiddlewareInterface
     public function __construct(
         private array $retryableExceptions = [],
         private bool $jitter = true,
-        ?CommandAttributeProviderInterface $attributes = null,
+        ?CommandMetadataProviderInterface $metadata = null,
     ) {
-        $this->attributes = $attributes ?? new ReflectionCommandAttributeProvider();
+        $this->metadata = $metadata ?? new ReflectionCommandMetadataProvider();
     }
 
     public function execute(OperationInterface $operation, OperationHandlerInterface $handler): OperationInterface
     {
-        $retry = $this->attributes->retry($operation->command);
+        $retry = $this->metadata->get($operation->command, Retry::class);
 
         if ($retry === null) {
             return $handler->handle($operation);

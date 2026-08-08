@@ -1,6 +1,6 @@
 # Componenta CQRS Retry
 
-Retry middleware package for `componenta/cqrs` commands marked with `#[Retry]`.
+Retry middleware package for `componenta/cqrs` commands marked with `#[Componenta\CQRS\Retry\Attribute\Retry]`.
 
 ```bash
 composer require componenta/cqrs-retry
@@ -15,6 +15,8 @@ return [
 ];
 ```
 
+
+The provider registers `Componenta\CQRS\Retry\Attribute\Retry` in `ConfigKey::COMMAND_METADATA_ATTRIBUTES`. With `componenta/cqrs-app`, its constructor arguments are compiled into the versioned map; the middleware reads them through `CommandMetadataProviderInterface` without hard-coded compiler support.
 The package provides:
 
 - `Componenta\CQRS\Command\Middleware\RetryMiddleware`

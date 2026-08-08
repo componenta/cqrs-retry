@@ -2,34 +2,29 @@
 
 declare(strict_types=1);
 
-use Componenta\CQRS\Command\Attribute\Async;
-use Componenta\CQRS\Command\Attribute\Lock;
-use Componenta\CQRS\Command\Attribute\Retry;
 use Componenta\CQRS\Command\Exception\RetryableExceptionInterface;
-use Componenta\CQRS\Command\Metadata\CommandAttributeProviderInterface;
+use Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface;
 use Componenta\CQRS\Command\Middleware\OperationHandlerInterface;
 use Componenta\CQRS\Command\Middleware\RetryMiddleware;
 use Componenta\CQRS\Command\Operation;
 use Componenta\CQRS\Command\OperationInterface;
 use Componenta\CQRS\Command\OperationResult;
+use Componenta\CQRS\Retry\Attribute\Retry;
 
 final class CqrsRetryableTestException extends RuntimeException implements RetryableExceptionInterface {}
 
-it('uses the attribute provider and retries retryable command failures', function () {
-    $attributes = new class implements CommandAttributeProviderInterface {
-        public function async(object|string $command): ?Async
+it('uses command metadata and retries retryable command failures', function () {
+    $metadata = new class implements CommandMetadataProviderInterface {
+        public function get(object|string $command, string $attribute): ?object
         {
-            return null;
+            return $attribute === Retry::class
+                ? new Retry(attempts: 2, delayMs: 0)
+                : null;
         }
 
-        public function retry(object|string $command): ?Retry
+        public function isKnown(object|string $command): bool
         {
-            return new Retry(attempts: 2, delayMs: 0);
-        }
-
-        public function lock(object|string $command): ?Lock
-        {
-            return null;
+            return true;
         }
     };
 
@@ -49,7 +44,7 @@ it('uses the attribute provider and retries retryable command failures', functio
         }
     };
 
-    $operation = (new RetryMiddleware(attributes: $attributes))->execute(
+    $operation = (new RetryMiddleware(metadata: $metadata))->execute(
         Operation::create(new stdClass()),
         $handler,
     );
