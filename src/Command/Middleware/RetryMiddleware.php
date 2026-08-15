@@ -9,6 +9,7 @@ use Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface;
 use Componenta\CQRS\Command\Metadata\ReflectionCommandMetadataProvider;
 use Componenta\CQRS\Command\OperationInterface;
 use Componenta\CQRS\Retry\Attribute\Retry;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -26,24 +27,50 @@ use Throwable;
  * #[Retry(attempts: 3, delayMs: 100, multiplier: 2.0)]
  * final readonly class ProcessPaymentCommand {}
  *
- * // Will retry up to 3 times with delays: ~100ms, ~200ms, ~400ms (with jitter)
+ * // Three total invocations, with delays of ~100ms and ~200ms between attempts.
  * ```
  */
 final readonly class RetryMiddleware implements MiddlewareInterface
 {
     private CommandMetadataProviderInterface $metadata;
 
+    /** @var list<class-string<Throwable>> */
+    private array $retryableExceptions;
+
     /**
-     * @param list<class-string<Throwable>> $retryableExceptions
+     * @param array<array-key, mixed> $retryableExceptions
      *        Additional exception classes to retry (besides RetryableExceptionInterface)
      * @param bool $jitter Add random jitter to delay (±25%) to prevent thundering herd
      */
     public function __construct(
-        private array $retryableExceptions = [],
+        array $retryableExceptions = [],
         private bool $jitter = true,
         ?CommandMetadataProviderInterface $metadata = null,
     ) {
+        if (!array_is_list($retryableExceptions)) {
+            throw new InvalidArgumentException('Retryable exceptions must be a list.');
+        }
+
+        $validatedExceptions = [];
+
+        foreach ($retryableExceptions as $index => $exception) {
+            if (!is_string($exception)
+                || trim($exception) === ''
+                || !is_a($exception, Throwable::class, true)
+            ) {
+                throw new InvalidArgumentException(sprintf(
+                    'Retryable exception at index %s must be a Throwable class or interface.',
+                    (string) $index,
+                ));
+            }
+
+            /** @var class-string<Throwable> $exception */
+            $validatedExceptions[] = $exception;
+        }
+
         $this->metadata = $metadata ?? new ReflectionCommandMetadataProvider();
+        $this->retryableExceptions = $validatedExceptions;
+
     }
 
     public function execute(OperationInterface $operation, OperationHandlerInterface $handler): OperationInterface
@@ -77,10 +104,10 @@ final readonly class RetryMiddleware implements MiddlewareInterface
 
                 $this->sleep($this->applyJitter($delayMs));
 
-                $delayMs = min(
-                    (int) ($delayMs * $retry->multiplier),
-                    $retry->maxDelayMs,
-                );
+                $delayMs = $delayMs > 0
+                    && $delayMs >= $retry->maxDelayMs / $retry->multiplier
+                        ? $retry->maxDelayMs
+                        : (int) ($delayMs * $retry->multiplier);
             }
         }
     }

@@ -52,3 +52,26 @@ it('uses command metadata and retries retryable command failures', function () {
     expect($operation->result?->value)->toBe('ok')
         ->and($attempts->count())->toBe(2);
 });
+
+it('rejects non-finite retry multipliers', function (float $multiplier): void {
+    expect(fn() => new Retry(multiplier: $multiplier))
+        ->toThrow(InvalidArgumentException::class, 'finite');
+})->with([NAN, INF, -INF]);
+
+it('rejects invalid retryable exception declarations', function (array $exceptions): void {
+    expect(fn() => new RetryMiddleware($exceptions))
+        ->toThrow(InvalidArgumentException::class, 'Throwable class or interface');
+})->with([
+    'non-throwable class' => [[stdClass::class]],
+    'empty class' => [['']],
+]);
+
+it('rejects associative retryable exception declarations', function (): void {
+    expect(fn() => new RetryMiddleware(['exception' => RuntimeException::class]))
+        ->toThrow(InvalidArgumentException::class, 'must be a list');
+});
+
+it('rejects delays that cannot be converted safely to microseconds', function (): void {
+    expect(fn() => new Retry(maxDelayMs: PHP_INT_MAX))
+        ->toThrow(InvalidArgumentException::class, 'too large');
+});

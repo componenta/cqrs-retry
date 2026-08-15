@@ -26,12 +26,18 @@ final readonly class Retry
             throw new InvalidArgumentException('Delay must be non-negative');
         }
 
-        if ($multiplier < 1.0) {
-            throw new InvalidArgumentException('Multiplier must be at least 1.0');
+        if ($multiplier < 1.0 || !is_finite($multiplier)) {
+            throw new InvalidArgumentException('Multiplier must be a finite number of at least 1.0');
         }
 
         if ($maxDelayMs < $delayMs) {
             throw new InvalidArgumentException('Max delay must be greater than or equal to delay');
+        }
+
+        if ($maxDelayMs > intdiv(PHP_INT_MAX, 1000)) {
+            throw new InvalidArgumentException(
+                'Max delay is too large to convert safely to microseconds.',
+            );
         }
 
         $this->delayMs = $delayMs;
