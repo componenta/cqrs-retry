@@ -18,13 +18,23 @@ jobs:
         php: ['8.4', '8.5']
     steps:
       - uses: actions/checkout@v7
+      - name: Checkout current CQRS v4 source
+        uses: actions/checkout@v7
+        with:
+          repository: componenta/cqrs
+          ref: main
+          path: .ci/cqrs
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
           coverage: none
           tools: composer:v2
       - run: composer validate --strict
-      - run: composer install --no-interaction --prefer-dist
+      - name: Use current CQRS v4 source
+        run: >-
+          composer config --json repositories.componenta-cqrs
+          '{"type":"path","url":".ci/cqrs","options":{"versions":{"componenta/cqrs":"4.0.0"}}}'
+      - run: composer update --with-all-dependencies --no-interaction --prefer-dist --no-progress
       - run: composer test
       - run: composer analyse
 
