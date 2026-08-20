@@ -6,7 +6,6 @@ namespace Componenta\CQRS\Command\Middleware;
 
 use Componenta\CQRS\Command\Exception\RetryableExceptionInterface;
 use Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface;
-use Componenta\CQRS\Command\Metadata\ReflectionCommandMetadataProvider;
 use Componenta\CQRS\Command\OperationInterface;
 use Componenta\CQRS\Retry\Attribute\Retry;
 use InvalidArgumentException;
@@ -22,6 +21,9 @@ use Throwable;
  * Commands must be marked with #[Retry] attribute to enable retries.
  * Supports fixed delay and exponential backoff with optional jitter.
  *
+ * When used with transaction middleware, RetryMiddleware must wrap the
+ * transaction middleware so every attempt gets its own transaction boundary.
+ *
  * @example
  * ```php
  * #[Retry(attempts: 3, delayMs: 100, multiplier: 2.0)]
@@ -32,8 +34,6 @@ use Throwable;
  */
 final readonly class RetryMiddleware implements MiddlewareInterface
 {
-    private CommandMetadataProviderInterface $metadata;
-
     /** @var list<class-string<Throwable>> */
     private array $retryableExceptions;
 
@@ -43,9 +43,9 @@ final readonly class RetryMiddleware implements MiddlewareInterface
      * @param bool $jitter Add random jitter to delay (±25%) to prevent thundering herd
      */
     public function __construct(
+        private CommandMetadataProviderInterface $metadata,
         array $retryableExceptions = [],
         private bool $jitter = true,
-        ?CommandMetadataProviderInterface $metadata = null,
     ) {
         if (!array_is_list($retryableExceptions)) {
             throw new InvalidArgumentException('Retryable exceptions must be a list.');
@@ -68,9 +68,7 @@ final readonly class RetryMiddleware implements MiddlewareInterface
             $validatedExceptions[] = $exception;
         }
 
-        $this->metadata = $metadata ?? new ReflectionCommandMetadataProvider();
         $this->retryableExceptions = $validatedExceptions;
-
     }
 
     public function execute(OperationInterface $operation, OperationHandlerInterface $handler): OperationInterface
@@ -93,7 +91,7 @@ final readonly class RetryMiddleware implements MiddlewareInterface
         $delayMs = $retry->delayMs;
 
         while (true) {
-            $attempt++;
+            ++$attempt;
 
             try {
                 return $handler->handle($operation);
