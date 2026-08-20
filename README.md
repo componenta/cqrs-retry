@@ -17,7 +17,7 @@ return [
 
 The provider registers `Componenta\CQRS\Retry\Attribute\Retry` in `ConfigKey::COMMAND_METADATA_ATTRIBUTES` and provides `RetryMiddleware`. The middleware requires the core `CommandMetadataProviderInterface`; it does not create an independent reflection fallback. With `componenta/cqrs-app`, retry metadata therefore follows the same development/compiled map semantics as the rest of CQRS.
 
-When transaction middleware is present, retry must wrap the transaction boundary:
+Middleware ordering is controlled by the application. With transaction middleware, the two common compositions have different semantics:
 
 ```text
 RetryMiddleware
@@ -25,6 +25,14 @@ RetryMiddleware
     handler
 ```
 
-This is a hard CQRS v4 middleware-order constraint. Constructing a command bus with `TransactionMiddleware -> RetryMiddleware` fails immediately instead of allowing writes from a failed attempt to remain in the transaction later committed by a successful attempt.
+creates a fresh transaction for every retry attempt. By contrast:
+
+```text
+TransactionMiddleware
+  RetryMiddleware
+    handler
+```
+
+keeps all attempts inside one surrounding transaction. The package does not reject either topology; choose the one that matches the desired transaction semantics.
 
 `RetryableExceptionInterface` marks transient exceptions that may be retried. Additional throwable classes can be configured explicitly in the middleware constructor. Retry attempts, delay, multiplier, maximum delay, and jitter are controlled by `#[Retry]` and middleware configuration.
