@@ -17,13 +17,10 @@ use Throwable;
  * Retries exceptions that either implement RetryableExceptionInterface or are
  * explicitly listed in the constructor. Commands must be marked with #[Retry].
  *
- * Retry runs after authorization and before transaction middleware so every
- * attempt has an independent transaction boundary.
+ * Middleware ordering is application configuration. When transaction middleware
+ * is inside retry, each attempt gets its own transaction. When retry is inside
+ * transaction, all attempts share the surrounding transaction.
  */
-#[MiddlewareOrder(
-    before: ['Componenta\\CQRS\\Command\\Middleware\\TransactionMiddleware'],
-    after: ['Componenta\\CQRS\\Command\\Middleware\\PolicyMiddleware'],
-)]
 final readonly class RetryMiddleware implements MiddlewareInterface
 {
     /** @var list<class-string<Throwable>> */
