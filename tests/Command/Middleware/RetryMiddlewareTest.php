@@ -13,13 +13,14 @@ use Componenta\CQRS\Retry\Attribute\Retry;
 
 final class CqrsRetryableTestException extends RuntimeException implements RetryableExceptionInterface {}
 
-it('uses command metadata and retries retryable command failures', function () {
-    $metadata = new class implements CommandMetadataProviderInterface {
+function retryTestMetadata(?Retry $retry = null): CommandMetadataProviderInterface
+{
+    return new class ($retry) implements CommandMetadataProviderInterface {
+        public function __construct(private readonly ?Retry $retry) {}
+
         public function get(object|string $command, string $attribute): ?object
         {
-            return $attribute === Retry::class
-                ? new Retry(attempts: 2, delayMs: 0)
-                : null;
+            return $attribute === Retry::class ? $this->retry : null;
         }
 
         public function isKnown(object|string $command): bool
@@ -27,7 +28,9 @@ it('uses command metadata and retries retryable command failures', function () {
             return true;
         }
     };
+}
 
+it('uses command metadata and retries retryable command failures', function () {
     $attempts = new ArrayObject();
     $handler = new class($attempts) implements OperationHandlerInterface {
         public function __construct(private readonly ArrayObject $attempts) {}
@@ -44,7 +47,9 @@ it('uses command metadata and retries retryable command failures', function () {
         }
     };
 
-    $operation = (new RetryMiddleware(metadata: $metadata))->execute(
+    $operation = (new RetryMiddleware(
+        metadata: retryTestMetadata(new Retry(attempts: 2, delayMs: 0)),
+    ))->execute(
         Operation::create(new stdClass()),
         $handler,
     );
@@ -59,7 +64,7 @@ it('rejects non-finite retry multipliers', function (float $multiplier): void {
 })->with([NAN, INF, -INF]);
 
 it('rejects invalid retryable exception declarations', function (array $exceptions): void {
-    expect(fn() => new RetryMiddleware($exceptions))
+    expect(fn() => new RetryMiddleware(retryTestMetadata(), $exceptions))
         ->toThrow(InvalidArgumentException::class, 'Throwable class or interface');
 })->with([
     'non-throwable class' => [[stdClass::class]],
@@ -67,8 +72,10 @@ it('rejects invalid retryable exception declarations', function (array $exceptio
 ]);
 
 it('rejects associative retryable exception declarations', function (): void {
-    expect(fn() => new RetryMiddleware(['exception' => RuntimeException::class]))
-        ->toThrow(InvalidArgumentException::class, 'must be a list');
+    expect(fn() => new RetryMiddleware(
+        retryTestMetadata(),
+        ['exception' => RuntimeException::class],
+    ))->toThrow(InvalidArgumentException::class, 'must be a list');
 });
 
 it('rejects delays that cannot be converted safely to microseconds', function (): void {
