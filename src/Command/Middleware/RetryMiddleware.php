@@ -21,8 +21,8 @@ use Throwable;
  * attempt has an independent transaction boundary.
  */
 #[MiddlewareOrder(
-    before: [TransactionMiddleware::class],
-    after: [PolicyMiddleware::class],
+    before: ['Componenta\\CQRS\\Command\\Middleware\\TransactionMiddleware'],
+    after: ['Componenta\\CQRS\\Command\\Middleware\\PolicyMiddleware'],
 )]
 final readonly class RetryMiddleware implements MiddlewareInterface
 {
