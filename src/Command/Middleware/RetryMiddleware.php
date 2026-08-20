@@ -23,15 +23,8 @@ use Throwable;
  *
  * When used with transaction middleware, RetryMiddleware must wrap the
  * transaction middleware so every attempt gets its own transaction boundary.
- *
- * @example
- * ```php
- * #[Retry(attempts: 3, delayMs: 100, multiplier: 2.0)]
- * final readonly class ProcessPaymentCommand {}
- *
- * // Three total invocations, with delays of ~100ms and ~200ms between attempts.
- * ```
  */
+#[MiddlewareOrder(before: [TransactionMiddleware::class])]
 final readonly class RetryMiddleware implements MiddlewareInterface
 {
     /** @var list<class-string<Throwable>> */
@@ -116,7 +109,10 @@ final readonly class RetryMiddleware implements MiddlewareInterface
             return true;
         }
 
-        return array_any($this->retryableExceptions, static fn($exceptionClass) => $e instanceof $exceptionClass);
+        return array_any(
+            $this->retryableExceptions,
+            static fn(string $exceptionClass): bool => $e instanceof $exceptionClass,
+        );
     }
 
     private function applyJitter(int $delayMs): int
