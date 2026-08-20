@@ -13,22 +13,16 @@ final class RetryMiddlewareFactory
 {
     public function __invoke(ContainerInterface $container): RetryMiddleware
     {
-        $metadata = null;
+        $metadata = $container->get(CommandMetadataProviderInterface::class);
 
-        if ($container->has(CommandMetadataProviderInterface::class)) {
-            $metadata = $container->get(CommandMetadataProviderInterface::class);
-
-            if (!$metadata instanceof CommandMetadataProviderInterface) {
-                throw new LogicException(sprintf(
-                    'Container entry "%s" must implement %s.',
-                    CommandMetadataProviderInterface::class,
-                    CommandMetadataProviderInterface::class,
-                ));
-            }
+        if (!$metadata instanceof CommandMetadataProviderInterface) {
+            throw new LogicException(sprintf(
+                'Container entry "%s" must implement %s.',
+                CommandMetadataProviderInterface::class,
+                CommandMetadataProviderInterface::class,
+            ));
         }
 
-        return new RetryMiddleware(
-            metadata: $metadata,
-        );
+        return new RetryMiddleware($metadata);
     }
 }
