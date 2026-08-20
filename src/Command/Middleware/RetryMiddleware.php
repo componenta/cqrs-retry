@@ -14,17 +14,16 @@ use Throwable;
 /**
  * Retries command execution on transient failures.
  *
- * Retries exceptions that either:
- * - Implement RetryableExceptionInterface
- * - Are listed in constructor's $retryableExceptions
+ * Retries exceptions that either implement RetryableExceptionInterface or are
+ * explicitly listed in the constructor. Commands must be marked with #[Retry].
  *
- * Commands must be marked with #[Retry] attribute to enable retries.
- * Supports fixed delay and exponential backoff with optional jitter.
- *
- * When used with transaction middleware, RetryMiddleware must wrap the
- * transaction middleware so every attempt gets its own transaction boundary.
+ * Retry runs after authorization and before transaction middleware so every
+ * attempt has an independent transaction boundary.
  */
-#[MiddlewareOrder(before: [TransactionMiddleware::class])]
+#[MiddlewareOrder(
+    before: [TransactionMiddleware::class],
+    after: [PolicyMiddleware::class],
+)]
 final readonly class RetryMiddleware implements MiddlewareInterface
 {
     /** @var list<class-string<Throwable>> */
