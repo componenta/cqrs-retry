@@ -58,6 +58,31 @@ it('uses command metadata and retries retryable command failures', function () {
         ->and($attempts->count())->toBe(2);
 });
 
+it('never lets jitter exceed maxDelayMs', function (): void {
+    $middleware = new RetryMiddleware(retryTestMetadata(), jitter: true);
+    $method = new ReflectionMethod(RetryMiddleware::class, 'applyJitter');
+
+    for ($i = 0; $i < 100; ++$i) {
+        $delay = $method->invoke($middleware, 100, 100);
+
+        expect($delay)->toBeInt()->toBeGreaterThanOrEqual(0)->toBeLessThanOrEqual(100);
+    }
+});
+
+it('clamps scaled backoff before integer conversion', function (int $delayMs, float $multiplier, int $maxDelayMs): void {
+    $method = new ReflectionMethod(RetryMiddleware::class, 'nextDelay');
+    $retry = new Retry(
+        delayMs: $delayMs,
+        multiplier: $multiplier,
+        maxDelayMs: $maxDelayMs,
+    );
+
+    expect($method->invoke(null, $delayMs, $retry))->toBe($maxDelayMs);
+})->with([
+    'rounding boundary' => [9, 1.2, 10],
+    'huge finite multiplier' => [1, PHP_FLOAT_MAX, 10],
+]);
+
 it('rejects non-finite retry multipliers', function (float $multiplier): void {
     expect(fn() => new Retry(multiplier: $multiplier))
         ->toThrow(InvalidArgumentException::class, 'finite');
