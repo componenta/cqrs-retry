@@ -9,6 +9,7 @@ use Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface;
 use Componenta\CQRS\Command\OperationInterface;
 use Componenta\CQRS\Retry\Attribute\Retry;
 use InvalidArgumentException;
+use LogicException;
 use Throwable;
 
 /**
@@ -89,12 +90,8 @@ final readonly class RetryMiddleware implements MiddlewareInterface
                     throw $e;
                 }
 
-                $this->sleep($this->applyJitter($delayMs));
-
-                $delayMs = $delayMs > 0
-                    && $delayMs >= $retry->maxDelayMs / $retry->multiplier
-                        ? $retry->maxDelayMs
-                        : (int) ($delayMs * $retry->multiplier);
+                $this->sleep($this->applyJitter($delayMs, $retry->maxDelayMs));
+                $delayMs = self::nextDelay($delayMs, $retry);
             }
         }
     }
@@ -111,19 +108,39 @@ final readonly class RetryMiddleware implements MiddlewareInterface
         );
     }
 
-    private function applyJitter(int $delayMs): int
+    private function applyJitter(int $delayMs, int $maxDelayMs): int
     {
         if (!$this->jitter || $delayMs <= 0) {
-            return max(0, $delayMs);
+            return min($maxDelayMs, max(0, $delayMs));
         }
 
         $jitterRange = (int) ($delayMs * 0.25);
+        $jittered = max(0, $delayMs + random_int(-$jitterRange, $jitterRange));
 
-        return max(0, $delayMs + random_int(-$jitterRange, $jitterRange));
+        return min($maxDelayMs, $jittered);
+    }
+
+    private static function nextDelay(int $delayMs, Retry $retry): int
+    {
+        if ($delayMs <= 0 || $delayMs >= $retry->maxDelayMs) {
+            return min($retry->maxDelayMs, max(0, $delayMs));
+        }
+
+        $scaled = $delayMs * $retry->multiplier;
+
+        if (!is_finite($scaled) || $scaled >= $retry->maxDelayMs) {
+            return $retry->maxDelayMs;
+        }
+
+        return (int) $scaled;
     }
 
     private function sleep(int $milliseconds): void
     {
+        if ($milliseconds < 0 || $milliseconds > intdiv(PHP_INT_MAX, 1000)) {
+            throw new LogicException('Retry sleep delay cannot be converted safely to microseconds.');
+        }
+
         if ($milliseconds > 0) {
             usleep($milliseconds * 1000);
         }
