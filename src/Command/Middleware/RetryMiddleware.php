@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Componenta\CQRS\Command\Middleware;
 
+use Closure;
 use Componenta\CQRS\Command\Exception\RetryableExceptionInterface;
 use Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface;
 use Componenta\CQRS\Command\OperationInterface;
@@ -26,16 +27,24 @@ final readonly class RetryMiddleware implements MiddlewareInterface
 {
     /** @var list<class-string<Throwable>> */
     private array $retryableExceptions;
+    /** @var Closure(int): void */
+    private Closure $sleep;
+    /** @var Closure(int, int): int */
+    private Closure $randomInt;
 
     /**
      * @param array<array-key, mixed> $retryableExceptions
      *        Additional exception classes to retry (besides RetryableExceptionInterface)
      * @param bool $jitter Add random jitter to delay (±25%) to prevent thundering herd
+     * @param (Closure(int): void)|null $sleep Wait for the supplied number of milliseconds.
+     * @param (Closure(int, int): int)|null $randomInt Choose an integer in the inclusive supplied range.
      */
     public function __construct(
         private CommandMetadataProviderInterface $metadata,
         array $retryableExceptions = [],
         private bool $jitter = true,
+        ?Closure $sleep = null,
+        ?Closure $randomInt = null,
     ) {
         if (!array_is_list($retryableExceptions)) {
             throw new InvalidArgumentException('Retryable exceptions must be a list.');
@@ -59,6 +68,10 @@ final readonly class RetryMiddleware implements MiddlewareInterface
         }
 
         $this->retryableExceptions = $validatedExceptions;
+        $this->sleep = $sleep ?? static function (int $milliseconds): void {
+            usleep($milliseconds * 1000);
+        };
+        $this->randomInt = $randomInt ?? random_int(...);
     }
 
     public function execute(OperationInterface $operation, OperationHandlerInterface $handler): OperationInterface
@@ -104,7 +117,7 @@ final readonly class RetryMiddleware implements MiddlewareInterface
 
         return array_any(
             $this->retryableExceptions,
-            static fn(string $exceptionClass): bool => $e instanceof $exceptionClass,
+            static fn (string $exceptionClass): bool => $e instanceof $exceptionClass,
         );
     }
 
@@ -115,7 +128,7 @@ final readonly class RetryMiddleware implements MiddlewareInterface
         }
 
         $jitterRange = (int) ($delayMs * 0.25);
-        $jittered = max(0, $delayMs + random_int(-$jitterRange, $jitterRange));
+        $jittered = max(0, $delayMs + ($this->randomInt)(-$jitterRange, $jitterRange));
 
         return min($maxDelayMs, $jittered);
     }
@@ -142,7 +155,7 @@ final readonly class RetryMiddleware implements MiddlewareInterface
         }
 
         if ($milliseconds > 0) {
-            usleep($milliseconds * 1000);
+            ($this->sleep)($milliseconds);
         }
     }
 }
