@@ -39,3 +39,16 @@ it('uses reflection metadata through real provider wiring without a map', functi
     $result = $container->get(RetryMiddleware::class)->execute(Operation::create(new RetryProviderCommand()), $handler);
     expect($result->result?->value)->toBe('retried')->and($handler->calls)->toBe(2);
 });
+
+
+it('registers the retry factory and rejects a non-metadata service explicitly', function (): void {
+    $factoryClass = \Componenta\CQRS\Command\Factory\RetryMiddlewareFactory::class;
+    $config = (new ConfigProvider())();
+    expect($config[ConfigKey::DEPENDENCIES][ConfigKey::FACTORIES][RetryMiddleware::class])->toBe($factoryClass);
+    $container = $this->createMock(\Psr\Container\ContainerInterface::class);
+    $container->expects($this->once())->method('get')
+        ->with(\Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface::class)
+        ->willReturn(new stdClass());
+    expect(fn () => (new $factoryClass())($container))
+        ->toThrow(LogicException::class, \Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface::class);
+});

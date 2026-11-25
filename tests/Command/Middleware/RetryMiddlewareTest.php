@@ -185,7 +185,7 @@ it('rejects delays that cannot be converted safely to microseconds', function ()
 });
 
 it('propagates the original failure without retrying when metadata or eligibility excludes retry', function (string $scenario): void {
-    $failure = $scenario === 'not retryable'
+    $failure = in_array($scenario, ['not retryable', 'not configured'], true)
         ? new DomainException('permanent failure')
         : new CqrsRetryableTestException('transient failure');
     $operation = Operation::create(new stdClass(), ['trace' => 'original']);
@@ -206,6 +206,7 @@ it('propagates the original failure without retrying when metadata or eligibilit
     };
     $middleware = new RetryMiddleware(
         $metadata,
+        retryableExceptions: $scenario === 'not configured' ? [InvalidArgumentException::class] : [],
         jitter: false,
         sleep: static function (int $delay) use (&$waits): void { $waits[] = $delay; },
     );
@@ -218,7 +219,7 @@ it('propagates the original failure without retrying when metadata or eligibilit
 
     expect($handler->operations)->toBe([$operation])
         ->and($waits)->toBe([]);
-})->with(['not marked', 'not retryable', 'single attempt']);
+})->with(['not marked', 'not retryable', 'not configured', 'single attempt']);
 
 it('retries an explicitly configured throwable using the original operation each time', function (): void {
     $operation = Operation::create(new stdClass(), ['trace' => 'original']);
