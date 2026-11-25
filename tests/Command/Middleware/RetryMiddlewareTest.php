@@ -10,6 +10,9 @@ use Componenta\CQRS\Command\Operation;
 use Componenta\CQRS\Command\OperationInterface;
 use Componenta\CQRS\Command\OperationResult;
 use Componenta\CQRS\Retry\Attribute\Retry;
+use Componenta\CQRS\Command\Middleware\RetrySleepProbe;
+
+require_once dirname(__DIR__, 2) . '/Fixture/RetrySleepProbe.php';
 
 final class CqrsRetryableTestException extends RuntimeException implements RetryableExceptionInterface
 {
@@ -251,4 +254,60 @@ it('retries an explicitly configured throwable using the original operation each
         ->and($result->id)->toBe($operation->id)
         ->and($result->createdAt)->toBe($operation->createdAt)
         ->and($result->attributes)->toBe($operation->attributes);
+});
+
+
+it('converts the configured default retry wait from milliseconds into microseconds', function (): void {
+    $handler = new class implements OperationHandlerInterface {
+        public int $attempts = 0;
+        public function handle(OperationInterface $operation): OperationInterface
+        {
+            if (++$this->attempts === 1) {
+                throw new CqrsRetryableTestException();
+            }
+
+            return $operation;
+        }
+    };
+    $operation = Operation::create(new stdClass());
+    RetrySleepProbe::$waits = [];
+    try {
+        $result = (new RetryMiddleware(
+            retryTestMetadata(new Retry(attempts: 2, delayMs: 7)),
+            jitter: false,
+        ))->execute($operation, $handler);
+        expect($result)->toBe($operation)
+            ->and($handler->attempts)->toBe(2)
+            ->and(RetrySleepProbe::$waits)->toBe([7000]);
+    } finally {
+        RetrySleepProbe::$waits = null;
+    }
+});
+
+it('does not wait or call the jitter source for a retry with a zero delay', function (): void {
+    $handler = new class implements OperationHandlerInterface {
+        public int $attempts = 0;
+        public function handle(OperationInterface $operation): OperationInterface
+        {
+            if (++$this->attempts === 1) {
+                throw new CqrsRetryableTestException();
+            }
+            return $operation;
+        }
+    };
+    $randomCalls = 0;
+    $waits = [];
+    $middleware = new RetryMiddleware(
+        retryTestMetadata(new Retry(attempts: 2, delayMs: 0, maxDelayMs: 0)),
+        sleep: static function (int $delay) use (&$waits): void { $waits[] = $delay; },
+        randomInt: static function (int $min, int $max) use (&$randomCalls): int {
+            ++$randomCalls;
+            return 0;
+        },
+    );
+    $operation = Operation::create(new stdClass());
+    expect($middleware->execute($operation, $handler))->toBe($operation)
+        ->and($handler->attempts)->toBe(2)
+        ->and($randomCalls)->toBe(0)
+        ->and($waits)->toBe([]);
 });
