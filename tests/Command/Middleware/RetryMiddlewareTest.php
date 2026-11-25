@@ -183,3 +183,71 @@ it('rejects delays that cannot be converted safely to microseconds', function ()
     expect(fn () => new Retry(maxDelayMs: PHP_INT_MAX))
         ->toThrow(InvalidArgumentException::class, 'too large');
 });
+
+it('propagates the original failure without retrying when metadata or eligibility excludes retry', function (string $scenario): void {
+    $failure = $scenario === 'not retryable'
+        ? new DomainException('permanent failure')
+        : new CqrsRetryableTestException('transient failure');
+    $operation = Operation::create(new stdClass(), ['trace' => 'original']);
+    $handler = new class ($failure) implements OperationHandlerInterface {
+        public array $operations = [];
+        public function __construct(private readonly Throwable $failure) {}
+        public function handle(OperationInterface $operation): OperationInterface
+        {
+            $this->operations[] = $operation;
+            throw $this->failure;
+        }
+    };
+    $waits = [];
+    $metadata = match ($scenario) {
+        'not marked' => retryTestMetadata(),
+        'single attempt' => retryTestMetadata(new Retry(attempts: 1)),
+        default => retryTestMetadata(new Retry(attempts: 3)),
+    };
+    $middleware = new RetryMiddleware(
+        $metadata,
+        jitter: false,
+        sleep: static function (int $delay) use (&$waits): void { $waits[] = $delay; },
+    );
+    try {
+        $middleware->execute($operation, $handler);
+        test()->fail('Expected the original failure.');
+    } catch (RuntimeException|DomainException $caught) {
+        expect($caught)->toBe($failure);
+    }
+
+    expect($handler->operations)->toBe([$operation])
+        ->and($waits)->toBe([]);
+})->with(['not marked', 'not retryable', 'single attempt']);
+
+it('retries an explicitly configured throwable using the original operation each time', function (): void {
+    $operation = Operation::create(new stdClass(), ['trace' => 'original']);
+    $handler = new class implements OperationHandlerInterface {
+        public array $operations = [];
+        public function handle(OperationInterface $operation): OperationInterface
+        {
+            $this->operations[] = $operation;
+            if (count($this->operations) === 1) {
+                throw new DomainException('configured transient failure');
+            }
+            return $operation->withResult(new OperationResult(null));
+        }
+    };
+    $waits = [];
+    $middleware = new RetryMiddleware(
+        retryTestMetadata(new Retry(attempts: 2, delayMs: 5)),
+        [DomainException::class],
+        jitter: false,
+        sleep: static function (int $delay) use (&$waits): void { $waits[] = $delay; },
+    );
+    $result = $middleware->execute($operation, $handler);
+
+    expect($handler->operations)->toBe([$operation, $operation])
+        ->and($waits)->toBe([5])
+        ->and($operation->result)->toBeNull()
+        ->and($result->result)->toBeInstanceOf(OperationResult::class)
+        ->and($result->result->value)->toBeNull()
+        ->and($result->id)->toBe($operation->id)
+        ->and($result->createdAt)->toBe($operation->createdAt)
+        ->and($result->attributes)->toBe($operation->attributes);
+});
