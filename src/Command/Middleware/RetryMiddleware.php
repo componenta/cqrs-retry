@@ -6,18 +6,20 @@ namespace Componenta\CQRS\Command\Middleware;
 
 use Closure;
 use Componenta\CQRS\Command\Exception\RetryableExceptionInterface;
+use Componenta\CQRS\Command\Exception\RetryConditionException;
 use Componenta\CQRS\Command\Metadata\CommandMetadataProviderInterface;
 use Componenta\CQRS\Command\OperationInterface;
 use Componenta\CQRS\Retry\Attribute\Retry;
 use InvalidArgumentException;
 use LogicException;
 use Throwable;
+use TypeError;
 
 /**
  * Retries command execution on transient failures.
  *
- * Retries exceptions that either implement RetryableExceptionInterface or are
- * explicitly listed in the constructor. Commands must be marked with #[Retry].
+ * Commands must be marked with #[Retry]. An explicit when condition replaces
+ * the default marker/configured-list classifier, within the same attempt bound.
  *
  * Middleware ordering is application configuration. When transaction middleware
  * is inside retry, each attempt gets its own transaction. When retry is inside
@@ -99,13 +101,41 @@ final readonly class RetryMiddleware implements MiddlewareInterface
             try {
                 return $handler->handle($operation);
             } catch (Throwable $e) {
-                if ($attempt >= $retry->attempts || !$this->isRetryable($e)) {
+                if ($attempt >= $retry->attempts || !$this->shouldRetry($retry, $e, $operation, $attempt)) {
                     throw $e;
                 }
 
                 $this->sleep($this->applyJitter($delayMs, $retry->maxDelayMs));
                 $delayMs = self::nextDelay($delayMs, $retry);
             }
+        }
+    }
+
+    private function shouldRetry(
+        Retry $retry,
+        Throwable $failure,
+        OperationInterface $operation,
+        int $failedAttempt,
+    ): bool {
+        if ($retry->when === null) {
+            return $this->isRetryable($failure);
+        }
+
+        // Preserve the original values if application code reassigns its argument slots.
+        $failureInput = $failure;
+        $operationInput = $operation;
+        $attemptInput = $failedAttempt;
+
+        try {
+            /** @var mixed $decision */
+            $decision = ($retry->when)($failureInput, $operationInput, $attemptInput);
+            if (!is_bool($decision)) {
+                throw new TypeError('Retry condition must return bool.');
+            }
+
+            return $decision;
+        } catch (Throwable $conditionFailure) {
+            throw new RetryConditionException($failure, $conditionFailure, $failedAttempt);
         }
     }
 

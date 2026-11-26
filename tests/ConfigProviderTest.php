@@ -19,11 +19,20 @@ use Componenta\CQRS\Retry\ConfigProvider;
 final class RetryProviderCommand
 {
 }
+#[Retry(attempts: 2, delayMs: 0, when: static function (Throwable $failure, OperationInterface $operation, int $attempt): bool {
+    ++$operation->command->decisions;
+
+    return $failure instanceof RetryProviderFailure && $attempt === 1;
+})]
+final class RetryProviderCallbackCommand
+{
+    public int $decisions = 0;
+}
 final class RetryProviderFailure extends RuntimeException implements RetryableExceptionInterface
 {
 }
 
-it('uses reflection metadata through real provider wiring without a map', function (): void {
+it('uses reflection metadata through real provider wiring without a map', function (object $command): void {
     $composition = (new ConfigFactory())->create(new Environment([]), new \Componenta\CQRS\ConfigProvider(), new ConfigProvider());
     $container = (new ContainerFactory())->create($composition->config, $composition->dependencies);
     $handler = new class () implements OperationHandlerInterface {
@@ -36,9 +45,12 @@ it('uses reflection metadata through real provider wiring without a map', functi
             return $operation->withResult(new OperationResult('retried'));
         }
     };
-    $result = $container->get(RetryMiddleware::class)->execute(Operation::create(new RetryProviderCommand()), $handler);
+    $result = $container->get(RetryMiddleware::class)->execute(Operation::create($command), $handler);
     expect($result->result?->value)->toBe('retried')->and($handler->calls)->toBe(2);
-});
+    if ($command instanceof RetryProviderCallbackCommand) {
+        expect($command->decisions)->toBe(1);
+    }
+})->with(['default' => [new RetryProviderCommand()], 'condition' => [new RetryProviderCallbackCommand()]]);
 
 
 it('registers the retry factory and rejects a non-metadata service explicitly', function (): void {

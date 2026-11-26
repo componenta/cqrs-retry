@@ -4,9 +4,9 @@
     "type": "library",
     "license": "MIT",
     "require": {
-        "php": ">=8.4",
-        "componenta/config": "^3.0.0",
-        "componenta/cqrs": "^4.0.0",
+        "php": "^8.5.13",
+        "componenta/config": "^4.0",
+        "componenta/cqrs": "^5.0",
         "psr/container": "^2.0"
     },
     "require-dev": {
@@ -32,7 +32,8 @@
     "minimum-stability": "stable",
     "extra": {
         "branch-alias": {
-            "dev-main": "3.0.x-dev"
+            "dev-main": "4.0.x-dev",
+            "dev-spec/attribute-callbacks-2026-11-26": "4.0.x-dev"
         },
         "componenta": {
             "config-providers": [

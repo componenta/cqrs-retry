@@ -9,7 +9,8 @@ it('exposes the documented retry defaults and accepts exact boundary values', fu
     expect($default->attempts)->toBe(3)
         ->and($default->delayMs)->toBe(100)
         ->and($default->multiplier)->toBe(1.0)
-        ->and($default->maxDelayMs)->toBe(10000);
+        ->and($default->maxDelayMs)->toBe(10000)
+        ->and($default->when)->toBeNull();
 
     $minimum = new Retry(attempts: 1, delayMs: 0, multiplier: 1.0, maxDelayMs: 0);
     expect($minimum->attempts)->toBe(1)

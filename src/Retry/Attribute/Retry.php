@@ -5,18 +5,23 @@ declare(strict_types=1);
 namespace Componenta\CQRS\Retry\Attribute;
 
 use Attribute;
+use Closure;
+use Componenta\CQRS\Command\OperationInterface;
 use InvalidArgumentException;
+use Throwable;
 
 #[Attribute(Attribute::TARGET_CLASS)]
 final readonly class Retry
 {
     public int $delayMs;
 
+    /** @param null|(Closure(Throwable, OperationInterface, int): bool) $when */
     public function __construct(
         public int $attempts = 3,
         int $delayMs = 100,
         public float $multiplier = 1.0,
         public int $maxDelayMs = 10000,
+        public ?Closure $when = null,
     ) {
         if ($attempts < 1) {
             throw new InvalidArgumentException('Attempts must be at least 1');
